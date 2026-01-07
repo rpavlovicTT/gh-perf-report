@@ -216,3 +216,110 @@ class GitHubClient:
             if pattern in artifact.get("name", ""):
                 return artifact
         return None
+
+    def find_device_perf_artifact_by_job_name(
+        self, owner: str, repo: str, run_id: int, job_name: str, artifacts_cache: Optional[dict] = None
+    ) -> Optional[Dict]:
+        """
+        Find device-perf artifact by matching job name.
+
+        This handles cases where workflow was re-run and job IDs don't match
+        between the current attempt and the attempt that uploaded artifacts.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            run_id: Workflow run ID
+            job_name: Job name to match
+            artifacts_cache: Optional pre-built cache of job_name -> artifact
+
+        Returns:
+            Artifact data or None if not found
+        """
+        if artifacts_cache is not None:
+            # Use pre-built cache
+            normalized_name = self._normalize_job_name(job_name)
+            return artifacts_cache.get(normalized_name)
+
+        # Fall back to building cache on demand (less efficient)
+        cache = self.build_artifact_cache(owner, repo, run_id)
+        normalized_name = self._normalize_job_name(job_name)
+        return cache.get(normalized_name)
+
+    def build_artifact_cache(self, owner: str, repo: str, run_id: int) -> dict:
+        """
+        Build a cache mapping normalized job names to device-perf artifacts.
+
+        This is needed because workflow re-runs create new job IDs but artifacts
+        are associated with the original job IDs.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            run_id: Workflow run ID
+
+        Returns:
+            Dict mapping normalized job name -> artifact data
+        """
+        import re
+
+        artifacts = self.list_artifacts(owner, repo, run_id)
+        cache = {}
+
+        for artifact in artifacts:
+            artifact_name = artifact.get("name", "")
+            if not artifact_name.startswith(ARTIFACT_PREFIX_DEVICE_PERF):
+                continue
+
+            # Extract job ID from artifact name (device-perf-{job_id})
+            match = re.match(rf"{ARTIFACT_PREFIX_DEVICE_PERF}(\d+)", artifact_name)
+            if not match:
+                continue
+
+            artifact_job_id = int(match.group(1))
+
+            # Look up the job to get its name
+            try:
+                job_data = self.get_job(owner, repo, artifact_job_id)
+                if job_data:
+                    job_name = job_data.get("name", "")
+                    normalized = self._normalize_job_name(job_name)
+                    cache[normalized] = artifact
+            except Exception:
+                # Skip artifacts we can't resolve
+                continue
+
+        return cache
+
+    def get_job(self, owner: str, repo: str, job_id: int) -> Optional[Dict]:
+        """
+        Get job details by ID.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            job_id: Job ID
+
+        Returns:
+            Job data or None if not found
+        """
+        self.rate_limiter.wait_if_needed()
+
+        endpoint = f"repos/{owner}/{repo}/actions/jobs/{job_id}"
+        try:
+            return self._gh_api_call(endpoint)
+        except GitHubAPIError:
+            return None
+
+    def _normalize_job_name(self, job_name: str) -> str:
+        """
+        Normalize job name for matching.
+
+        Extracts the model identifier (e.g., "tt-xla-efficientnet") from
+        the full job name for reliable matching across workflow attempts.
+        """
+        import re
+        match = re.search(r"(tt-(?:xla|forge)-[a-zA-Z0-9_-]+)", job_name, re.IGNORECASE)
+        if match:
+            return match.group(1).lower()
+        return job_name.lower()

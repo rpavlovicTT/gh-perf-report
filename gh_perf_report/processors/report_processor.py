@@ -55,9 +55,12 @@ class ReportProcessor:
         # Filter benchmark jobs
         benchmark_jobs = [job for job in jobs_data if self._is_benchmark_job(job["name"])]
 
+        # Build artifact cache once (handles workflow re-runs with different job IDs)
+        artifact_cache = self.github.build_artifact_cache(owner, repo, run_id)
+
         # Process jobs in parallel
         job_results = self._process_jobs_parallel(
-            owner, repo, run_id, benchmark_jobs, max_workers
+            owner, repo, run_id, benchmark_jobs, max_workers, artifact_cache
         )
 
         return WorkflowReport(
@@ -82,12 +85,13 @@ class ReportProcessor:
         run_id: int,
         jobs: List[dict],
         max_workers: int,
+        artifact_cache: dict,
     ) -> List[JobResult]:
         """Process multiple jobs in parallel."""
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_job = {
                 executor.submit(
-                    self._process_single_job, owner, repo, run_id, job
+                    self._process_single_job, owner, repo, run_id, job, artifact_cache
                 ): job
                 for job in jobs
             }
@@ -115,7 +119,7 @@ class ReportProcessor:
             return results
 
     def _process_single_job(
-        self, owner: str, repo: str, run_id: int, job_data: dict
+        self, owner: str, repo: str, run_id: int, job_data: dict, artifact_cache: dict
     ) -> JobResult:
         """Process a single job and extract all metrics."""
         job_id = job_data["id"]
@@ -162,7 +166,7 @@ class ReportProcessor:
         # Extract device perf metrics from artifacts (Step 19)
         try:
             result.device_perf_metrics = self._extract_device_perf_metrics(
-                owner, repo, run_id, job_id
+                owner, repo, run_id, job_name, artifact_cache
             )
         except Exception as e:
             # Don't overwrite existing error messages
@@ -188,11 +192,13 @@ class ReportProcessor:
         return None, None
 
     def _extract_device_perf_metrics(
-        self, owner: str, repo: str, run_id: int, job_id: int
+        self, owner: str, repo: str, run_id: int, job_name: str, artifact_cache: dict
     ) -> Optional[DevicePerfMetrics]:
         """Extract device performance metrics from artifact."""
-        # Find device-perf artifact
-        artifact = self.github.find_device_perf_artifact(owner, repo, run_id, job_id)
+        # Find device-perf artifact by job name (handles workflow re-runs)
+        artifact = self.github.find_device_perf_artifact_by_job_name(
+            owner, repo, run_id, job_name, artifact_cache
+        )
         if not artifact:
             return None
 
