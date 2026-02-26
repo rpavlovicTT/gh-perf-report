@@ -56,6 +56,11 @@ class CompareProcessor:
         if match:
             return match.group(1).lower()
 
+        # New tt-xla format: "run-n150-perf-benchmarks / perf model_name (n150-perf)"
+        match = re.search(r"/\s*perf\s+([a-zA-Z0-9_][a-zA-Z0-9_.-]*)", job_name, re.IGNORECASE)
+        if match:
+            return match.group(1).lower()
+
         # Fallback: use full job name
         return job_name.lower()
 

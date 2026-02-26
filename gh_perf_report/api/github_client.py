@@ -87,7 +87,7 @@ class GitHubClient:
 
     def get_workflow_jobs(self, owner: str, repo: str, run_id: int) -> List[Dict]:
         """
-        Get all jobs for a workflow run.
+        Get all jobs for a workflow run (with pagination).
 
         Args:
             owner: Repository owner
@@ -97,9 +97,27 @@ class GitHubClient:
         Returns:
             List of job data
         """
+        self.rate_limiter.wait_if_needed()
+
         endpoint = f"repos/{owner}/{repo}/actions/runs/{run_id}/jobs?per_page=100"
-        response = self._gh_api_call(endpoint)
-        return response.get("jobs", [])
+        cmd = ["gh", "api", endpoint, "--paginate", "--jq", ".jobs"]
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            jobs = []
+            for line in result.stdout.strip().split("\n"):
+                if line:
+                    jobs.extend(json.loads(line))
+            return jobs
+        except subprocess.CalledProcessError as e:
+            raise GitHubAPIError(f"GitHub API call failed: {e.stderr}")
+        except json.JSONDecodeError as e:
+            raise GitHubAPIError(f"Invalid JSON response: {e}")
 
     def get_job_logs(self, owner: str, repo: str, job_id: int) -> str:
         """
@@ -319,7 +337,12 @@ class GitHubClient:
         the full job name for reliable matching across workflow attempts.
         """
         import re
+        # Old format: "... / tt-xla-model-name ..."
         match = re.search(r"(tt-(?:xla|forge)-[a-zA-Z0-9_-]+)", job_name, re.IGNORECASE)
+        if match:
+            return match.group(1).lower()
+        # New tt-xla format: "run-n150-perf-benchmarks / perf model_name (n150-perf)"
+        match = re.search(r"/\s*perf\s+([a-zA-Z0-9_][a-zA-Z0-9_.-]*)", job_name, re.IGNORECASE)
         if match:
             return match.group(1).lower()
         return job_name.lower()
