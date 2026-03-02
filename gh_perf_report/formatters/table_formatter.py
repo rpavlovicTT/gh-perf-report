@@ -210,6 +210,10 @@ class TableFormatter:
         match = re.search(r"(tt-(?:xla|forge)-[a-zA-Z0-9_-]+)", job_name, re.IGNORECASE)
         if match:
             return match.group(1)
+        # New tt-xla format: "run-n150-perf-benchmarks / perf model_name (n150-perf)"
+        match = re.search(r"/\s*perf\s+([a-zA-Z0-9_][a-zA-Z0-9_.-]*)", job_name, re.IGNORECASE)
+        if match:
+            return match.group(1)
         return job_name[:50] if len(job_name) > 50 else job_name
 
     def _format_status(self, conclusion: Optional[JobConclusion]) -> Text:

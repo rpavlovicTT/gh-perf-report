@@ -5,7 +5,7 @@ DEFAULT_OWNER = "tenstorrent"
 SUPPORTED_REPOS = ["tt-forge", "tt-xla"]
 
 # Benchmark job patterns - jobs that contain these patterns are benchmark jobs
-BENCHMARK_JOB_PATTERNS = ["tt-xla-", "tt-forge-"]
+BENCHMARK_JOB_PATTERNS = ["tt-xla-", "tt-forge-", "/ perf "]
 
 # Step names
 STEP_NAME_PERF_BENCHMARK = "Run Perf Benchmark"

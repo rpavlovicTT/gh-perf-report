@@ -75,10 +75,15 @@ class LogParser:
         # Pattern: "run-n150-perf-benchmarks / tt-xla-model-name (n150-perf, 12, 128) benchmark"
         # We want to extract "model-name" part
 
-        # First try to match the tt-xla- or tt-forge- pattern
+        # Old format: "... / tt-xla-model-name ..."
         match = re.search(
             r"tt-(?:xla|forge)-([a-zA-Z0-9_-]+)", job_name, re.IGNORECASE
         )
+        if match:
+            return match.group(1)
+
+        # New tt-xla format: "run-n150-perf-benchmarks / perf model_name (n150-perf)"
+        match = re.search(r"/\s*perf\s+([a-zA-Z0-9_][a-zA-Z0-9_.-]*)", job_name, re.IGNORECASE)
         if match:
             return match.group(1)
 
