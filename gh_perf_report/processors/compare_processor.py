@@ -57,9 +57,12 @@ class CompareProcessor:
             return match.group(1).lower()
 
         # New tt-xla format: "run-n150-perf-benchmarks / perf model_name (n150-perf)"
-        match = re.search(r"/\s*perf\s+([a-zA-Z0-9_][a-zA-Z0-9_.-]*)", job_name, re.IGNORECASE)
+        # Include benchmark type (n150-perf, p150, llmbox) in key to avoid
+        # cross-hardware collisions when comparing runs.
+        match = re.search(r"/\s*perf\s+([a-zA-Z0-9_][a-zA-Z0-9_.-]*)\s*\(([^)]+)\)", job_name, re.IGNORECASE)
         if match:
-            return match.group(1).lower()
+            model, bench_type = match.group(1), match.group(2)
+            return f"{bench_type}/{model}".lower()
 
         # Fallback: use full job name
         return job_name.lower()
