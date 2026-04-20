@@ -99,7 +99,7 @@ class GitHubClient:
         """
         self.rate_limiter.wait_if_needed()
 
-        endpoint = f"repos/{owner}/{repo}/actions/runs/{run_id}/jobs?per_page=100"
+        endpoint = f"repos/{owner}/{repo}/actions/runs/{run_id}/jobs?per_page=50"
         cmd = ["gh", "api", endpoint, "--paginate", "--jq", ".jobs"]
 
         try:
